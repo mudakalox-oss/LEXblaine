@@ -1,0 +1,35 @@
+
+name: Collect Blaine legal documents
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Collect documents
+        run: python scrape_forum.py
+
+      - name: Save collected database
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/laws.json data/scrape_report.json
+          git diff --cached --quiet || git commit -m "Update Blaine legal database"
+          git push
+          
