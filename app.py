@@ -15,33 +15,41 @@ from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parent
 DATA_FILE = ROOT / "data" / "laws.json"
-app = FastAPI(title="LEX Blaine — Legal Assistant", version="0.4")
+DRIVER_FILE = ROOT / "driver.json"
+
+app = FastAPI(title="LEX Blaine — Legal Assistant", version="0.8")
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
 
-DRIVER_FILE = ROOT / "driver.json"
+# ==========================================
+# 1. ДРАЙВЕР ПОВЕДЕНИЯ И ПРИОРИТЕТЫ
+# ==========================================
 
 DEFAULT_DRIVER = {
     "version": 1,
-    "article_resolution": {"bare_article_number_preference": ["УК", "АК"]},
+    "article_resolution": {"bare_article_number_preference": ["УК", "АК", "УАК", "ПК"]},
     "intent_rules": [],
     "answer_policy": {"concise": True, "no_invention": True}
 }
 
 def load_driver() -> dict[str, Any]:
-    """Load editable behavior rules from driver.json; fall back safely if missing."""
     try:
-        payload = json.loads(DRIVER_FILE.read_text(encoding="utf-8"))
-        if isinstance(payload, dict):
-            merged = dict(DEFAULT_DRIVER)
-            merged.update(payload)
-            return merged
+        if DRIVER_FILE.exists():
+            payload = json.loads(DRIVER_FILE.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                merged = dict(DEFAULT_DRIVER)
+                merged.update(payload)
+                return merged
     except (OSError, json.JSONDecodeError):
         pass
     return DEFAULT_DRIVER
 
+
+# ==========================================
+# 2. НОРМАЛИЗАЦИЯ И ПОЛНЫЕ СЛОВАРИ СЛЕНГА (В ИСХОДНОМ ОБЪЕМЕ)
+# ==========================================
+
 def norm(text: str) -> str:
     value = str(text or "").lower().replace("ё", "е")
-    # Normalize common Latin/Cyrillic lookalikes typed with the wrong keyboard layout.
     lookalikes = str.maketrans({
         "a": "а", "c": "с", "e": "е", "o": "о", "p": "р",
         "x": "х", "y": "у", "k": "к", "m": "м", "t": "т",
@@ -54,13 +62,14 @@ def norm(text: str) -> str:
         words.append(token)
     return " ".join(words).strip()
 
+
 STOP = set("""
 и в во на по к ко с со от до для о об обо а но или ли же это как что где
 когда можно нельзя бы при без под над из за у не да мне меня мой моя
 этот эта эти такой такая такое ли же быть есть был была были будет
 """.split())
 
-# ПОЛНЫЙ СЛОВАРЬ СЛЕНГА И АЛИАСОВ ИЗ ТВОЕГО ИХОДНОГО ФАЙЛА
+# ПОЛНЫЙ ИСХОДНЫЙ СЛОВАРЬ АЛИАСОВ
 ALIASES = {
     "уволили": "увольнение", "уволить": "увольнение",
     "увольняют": "увольнение", "уволен": "увольнение",
@@ -102,7 +111,7 @@ ALIASES = {
     "броник": "бронежилет", "бронника": "бронежилет",
 }
 
-# ПОЛНЫЕ ГРУППЫ СИНОНИМОВ
+# ПОЛНЫЕ ИСХОДНЫЕ ГРУППЫ СИНОНИМОВ
 SYNONYM_GROUPS = {
     "оскорбление": "оскорбил оскорблять оскорбление оскорбления унизил унижение хамство грубость обматерил мат ругань неуважение",
     "госник": "гос сотрудник госник госникa государственный сотрудник сотрудник госструктуры госслужащий госслужба",
@@ -154,7 +163,6 @@ SYNONYM_GROUPS = {
     "жалоба": "жалоба обращение заявление рапорт сообщить обжаловать оспорить",
     "рапорт": "рапорт заявление доклад служебная записка обращение",
     "ордер": "ордер санкция разрешение судебное разрешение постановление",
-    "обыск": "обыск досмотр осмотр проверка вещей изъятие",
     "неприкосновенность": "неприкосновенность иммунитет защищенность статус неприкосновенный",
     "госструктура": "госструктура государственная структура госорган государственный орган ведомство организация фракция",
     "медицинская помощь": "медик врач больница лечение медицинская помощь скорая",
@@ -162,6 +170,7 @@ SYNONYM_GROUPS = {
     "маскировка": "маска лицо скрыть личность маскировка",
     "чрезвычайная ситуация": "чп чрезвычайная ситуация происшествие вызов тревога",
 }
+
 for _canonical, _terms in SYNONYM_GROUPS.items():
     for _term in _terms.split():
         ALIASES.setdefault(_term, _canonical)
@@ -178,100 +187,45 @@ def tokens(text: str) -> list[str]:
                 out.append(part)
     return out
 
-def classify_question(question: str) -> dict[str, Any]:
+
+# ==========================================
+# 3. ТОЧНЫЙ АНАЛИЗАТОР НОМЕРОВ СТАТЕЙ
+# ==========================================
+
+def extract_article_details(question: str) -> dict[str, Any]:
     q = norm(question)
     m = re.search(r"(?<!\d)(\d{1,2})[.\s](\d{1,2})(?!\d)", q)
+    article_number = ""
     if m:
         article_number = f"{m.group(1)}.{m.group(2)}"
     else:
         m_single = re.search(r"(?:статья|ст\.?)\s*(\d+)", q)
-        article_number = m_single.group(1) if m_single else ""
-        if not article_number:
+        if m_single:
+            article_number = m_single.group(1)
+        else:
             m_alt = re.search(r"\b(\d{1,2})[.,](\d{1,2})\b", q)
             if m_alt:
                 article_number = f"{m_alt.group(1)}.{m_alt.group(2)}"
 
-    explicit_pc = bool(re.search(r"\bпк\b|процессуальн|задержан|кафф", q))
+    target_code = ""
+    if re.search(r"\бук\b|уголовн", q):
+        target_code = "ук"
+    elif re.search(r"\бак\b|административн", q):
+        target_code = "ак"
+    elif re.search(r"\буак\b", q):
+        target_code = "уак"
+    elif re.search(r"\бпк\b|процессуальн", q):
+        target_code = "пк"
+
     return {
         "article_number": article_number,
-        "explicit_pc": explicit_pc
+        "target_code": target_code
     }
 
-def split_law(law: dict[str, Any]) -> list[dict[str, Any]]:
-    body = str(law.get("text", "") or "").replace("\r\n", "\n")
-    if not body.strip():
-        return []
 
-    marker = (
-        r"(?=^[ \t]*(?:Статья\s+[0-9IVXА-Яа-я.-]+|"
-        r"Глава\s+[IVXА-Яа-я0-9.-]+|Раздел\s+[IVXА-Яа-я0-9.-]+)"
-        r")"
-    )
-    pieces = re.split(marker, body, flags=re.I | re.M)
-    pieces = [p.strip() for p in pieces if len(p.strip()) > 20]
-    if not pieces:
-        pieces = [body.strip()]
-
-    result = []
-    for piece in pieces:
-        lines = [line.strip() for line in piece.splitlines() if line.strip()]
-        head = lines[0][:220] if lines else str(law.get("title", ""))
-        article_match = re.match(
-            r"^(Статья\s+[^\n:;.]+|Глава\s+[^\n:;.]+|Раздел\s+[^\n:;.]+)",
-            head, re.I
-        )
-        result.append({
-            "title": str(law.get("title") or law.get("document") or "Документ"),
-            "document": str(law.get("document") or law.get("title") or "Документ"),
-            "article": article_match.group(1).strip() if article_match else "",
-            "text": piece[:16000],
-            "url": str(law.get("url") or ""),
-            "revision_label": str(law.get("revision_label") or ""),
-        })
-    return result
-
-def all_chunks() -> list[dict[str, Any]]:
-    return [chunk for law in load_db() for chunk in split_law(law)]
-
-def rank(question: str, chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    info = classify_question(question)
-    target_article = info["article_number"]
-    
-    scored = []
-    for chunk in chunks:
-        score = 0.0
-        doc = str(chunk.get("document", ""))
-        art = str(chunk.get("article", ""))
-        text = str(chunk.get("text", ""))
-        
-        heading_combined = norm(f"{doc} {art}")
-        
-        # Строгий поиск по номеру статьи, исключающий левые совпадения (как с терроризмом)
-        if target_article:
-            if target_article in norm(art) or re.search(r"(?<!\d)" + re.escape(target_article) + r"(?!\d)", heading_combined):
-                score += 100.0
-            else:
-                score -= 50.0
-        
-        query_tokens = set(tokens(question))
-        chunk_tokens = set(tokens(text + " " + heading_combined))
-        overlap = len(query_tokens & chunk_tokens)
-        score += overlap * 2.0
-        
-        item = dict(chunk)
-        item["score"] = round(score, 3)
-        item["coverage"] = float(overlap) / max(1, len(query_tokens))
-        scored.append(item)
-
-    scored.sort(key=lambda x: x["score"], reverse=True)
-    return scored
-
-class AskRequest(BaseModel):
-    question: str
-    limit: int = 6
-
-class ImportRequest(BaseModel):
-    laws: list[dict[str, Any]]
+# ==========================================
+# 4. РАБОТА С БД И УМНЫЙ РАНЖИРОВЩИК
+# ==========================================
 
 def load_db() -> list[dict[str, Any]]:
     if not DATA_FILE.exists():
@@ -283,26 +237,109 @@ def load_db() -> list[dict[str, Any]]:
     except (OSError, json.JSONDecodeError, AttributeError):
         return []
 
+def split_law(law: dict[str, Any]) -> list[dict[str, Any]]:
+    body = str(law.get("text", "") or "").replace("\r\n", "\n")
+    if not body.strip():
+        return []
+
+    marker = r"(?=^[ \t]*(?:Статья\s+[0-9IVXА-Яа-я.-]+|Глава\s+[IVXА-Яа-я0-9.-]+))"
+    pieces = re.split(marker, body, flags=re.I | re.M)
+    pieces = [p.strip() for p in pieces if len(p.strip()) > 15]
+    if not pieces:
+        pieces = [body.strip()]
+
+    result = []
+    doc_title = str(law.get("title") or law.get("document") or "Документ")
+    
+    for piece in pieces:
+        lines = [line.strip() for line in piece.splitlines() if line.strip()]
+        head = lines[0][:220] if lines else doc_title
+        
+        art_match = re.search(r"(Статья\s+[0-9А-Яа-я.-]+)", head, re.I)
+        if not art_match:
+            art_match = re.search(r"(Статья\s+[0-9А-Яа-я.-]+)", piece[:150], re.I)
+            
+        article_name = art_match.group(1).strip() if art_match else "Общая норма"
+        
+        result.append({
+            "title": doc_title,
+            "document": doc_title,
+            "article": article_name,
+            "text": piece[:16000],
+            "url": str(law.get("url") or ""),
+        })
+    return result
+
+def all_chunks() -> list[dict[str, Any]]:
+    return [chunk for law in load_db() for chunk in split_law(law)]
+
+def rank(question: str, chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    info = extract_article_details(question)
+    target_art = info["article_number"]
+    target_code = info["target_code"]
+    q_tokens = set(tokens(question))
+    
+    scored = []
+    for chunk in chunks:
+        score = 0.0
+        doc = norm(str(chunk.get("document", "")))
+        art = norm(str(chunk.get("article", "")))
+        text = norm(str(chunk.get("text", "")))
+        
+        if target_art:
+            pattern = r"(?<!\d)" + re.escape(target_art) + r"(?!\d)"
+            if re.search(pattern, art):
+                score += 300.0
+            elif re.search(pattern, text[:200]):
+                score += 150.0
+            elif re.search(pattern, text):
+                score += 50.0
+            else:
+                score -= 100.0
+
+        if target_code:
+            if target_code in doc:
+                score += 50.0
+            else:
+                score -= 30.0
+
+        chunk_tokens = set(tokens(doc + " " + art + " " + text))
+        overlap = len(q_tokens & chunk_tokens)
+        score += overlap * 4.0
+        
+        item = dict(chunk)
+        item["score"] = round(score, 3)
+        item["coverage"] = float(overlap) / max(1, len(q_tokens))
+        scored.append(item)
+
+    scored.sort(key=lambda x: (x["score"], x["coverage"]), reverse=True)
+    return scored
+
+
+# ==========================================
+# 5. ФОРМИРОВАНИЕ ОТВЕТА (UI LEX)
+# ==========================================
+
 def make_answer(question: str, sources: list[dict[str, Any]]) -> tuple[str, str]:
-    if not sources or sources[0].get("score", -99) < -10:
+    if not sources:
         return (
-            "• **Суть:** Не удалось найти подходящую статью по вашему запросу.\n"
+            "• **Суть:** Норма права по вашему запросу не найдена в базе.\n"
             "• **Закон:** Не найден\n"
-            "• **Детали:** Уточните номер статьи или формулировку.",
+            "• **Детали:** Уточните номер статьи или формулировку запроса.",
             "Недостаточно данных"
         )
 
     best = sources[0]
     text = str(best.get("text") or "").strip()
     doc = str(best.get("document") or best.get("title") or "Документ")
-    article = str(best.get("article") or "").strip()
+    article = str(best.get("article") or "Статья").strip()
     
     details = re.sub(r"\s+", " ", text).strip()
     if len(details) > 280:
         details = details[:280].rsplit(" ", 1)[0] + "…"
 
     answer = (
-        f"• **Суть:** Норма права по вашему запросу.\n"
+        f"• **Суть:** Разъяснение нормы права по запросу.\n"
         f"• **Закон:** {article} ({doc})\n"
         f"• **Детали:** {details}"
     )
@@ -316,15 +353,16 @@ def llm_answer(question: str, sources: list[dict[str, Any]]) -> str | None:
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
         evidence = "\n\n".join(
-            f"[ИСТОЧНИК {i+1}] {s.get('document')} / {s.get('article') or s.get('title')}\nТЕКСТ:\n{s.get('text', '')[:3000]}"
+            f"[ИСТОЧНИК {i+1}] {s.get('document')} / {s.get('article')}\nТЕКСТ:\n{s.get('text', '')[:2500]}"
             for i, s in enumerate(sources[:3])
         )
         response = client.responses.create(
             model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
             instructions=(
-                "Ты LEX — юридический справочник GTA5RP Blaine. Отвечай кратко, строго в формате:\n"
+                "Ты LEX — юридический помощник GTA5RP Blaine. "
+                "Отвечай строго в формате 3 строчек:\n"
                 "• **Суть:** ...\n• **Закон:** ...\n• **Детали:** ...\n"
-                "Не выдумывай статьи и не отклоняйся от источников."
+                "Опирайся только на предоставленные источники."
             ),
             input=f"Вопрос: {question}\n\nИсточники:\n{evidence}"
         )
@@ -332,15 +370,26 @@ def llm_answer(question: str, sources: list[dict[str, Any]]) -> str | None:
     except Exception:
         return None
 
+
+# ==========================================
+# 6. API ENDPOINTS
+# ==========================================
+
+class AskRequest(BaseModel):
+    question: str
+    limit: int = 6
+
+class ImportRequest(BaseModel):
+    laws: list[dict[str, Any]]
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/api/status")
 def status():
-    laws = load_db()
     return {
-        "topic_count": len(laws),
+        "topic_count": len(load_db()),
         "chunk_count": len(all_chunks()),
         "ai_enabled": bool(os.getenv("OPENAI_API_KEY")),
         "driver_loaded": DRIVER_FILE.exists(),
@@ -350,10 +399,7 @@ def status():
 def laws():
     return {
         "laws": [{
-            k: law.get(k) for k in (
-                "title", "document", "url", "revision_label",
-                "extraction_chars", "has_text"
-            )
+            k: law.get(k) for k in ("title", "document", "url", "revision_label", "extraction_chars", "has_text")
         } for law in load_db()]
     }
 
@@ -376,26 +422,15 @@ def ask(req: AskRequest):
     hits = hits[:limit]
 
     sources = [{
-        k: h.get(k) for k in (
-            "title", "document", "article", "text", "url",
-            "revision_label", "score", "coverage"
-        )
+        k: h.get(k) for k in ("title", "document", "article", "text", "url", "revision_label", "score", "coverage")
     } for h in hits]
 
     generated = llm_answer(question, sources)
     if generated:
-        return {
-            "verdict": "Ответ по источникам",
-            "answer": generated, "sources": sources, "ai_used": True,
-        }
+        return {"verdict": "Ответ по источникам", "answer": generated, "sources": sources, "ai_used": True}
 
     answer, verdict = make_answer(question, sources)
-    return {
-        "verdict": verdict,
-        "answer": answer,
-        "sources": sources,
-        "ai_used": False,
-    }
+    return {"verdict": verdict, "answer": answer, "sources": sources, "ai_used": False}
 
 @app.post("/api/import")
 def import_laws(req: ImportRequest):
@@ -422,4 +457,3 @@ def import_laws(req: ImportRequest):
 @app.post("/api/reload")
 def reload_db():
     return {"ok": True, "topic_count": len(load_db()), "chunk_count": len(all_chunks())}
-    
