@@ -167,31 +167,77 @@ def all_chunks():
         chunks.extend(split_law(law))
     return chunks
 
-def rank(question: str, chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    q = tokens(question)
-    if not q:
+
+def rank(
+    question: str,
+    chunks: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    query_words = expand_query_tokens(question, chunks)
+
+    if not query_words:
         return []
-    docs_tokens = [tokens(" ".join(str(c.get(k, "")) for k in ("title","document","article","text"))) for c in chunks]
-    df = {term: sum(term in set(ts) for ts in docs_tokens) for term in set(q)}
-    N = max(1, len(chunks))
-    scored = []
-    for chunk, ts in zip(chunks, docs_tokens):
+
+    total_docs = len(chunks)
+    doc_tokens = []
+
+    for chunk in chunks:
+        text = " ".join(
+            str(chunk.get(key, "") or "")
+            for key in ("title", "document", "article", "text")
+        )
+        doc_tokens.append(tokens(text))
+
+    doc_frequency = {
+        word: sum(word in set(ts) for ts in doc_tokens)
+        for word in query_words
+    }
+
+    results = []
+
+    for chunk, words in zip(chunks, doc_tokens):
         counts = {}
-        for t in ts:
-            counts[t] = counts.get(t, 0) + 1
-        title_terms = set(tokens(" ".join([str(chunk.get("title","")), str(chunk.get("document","")), str(chunk.get("article",""))])))
+        for word in words:
+            counts[word] = counts.get(word, 0) + 1
+
+        title = " ".join(
+            str(chunk.get(key, "") or "")
+            for key in ("title", "document", "article")
+        )
+        title_words = set(tokens(title))
+
         score = 0.0
-        for term in q:
-            tf = counts.get(term, 0)
-            if tf:
-                idf = math.log(1 + (N - df.get(term, 0) + 0.5) / (df.get(term, 0) + 0.5))
-                score += idf * (tf * 2.2 / (tf + 1.2))
-                if term in title_terms:
-                    score *= 1.12
-        if score > 0:
-            scored.append({**chunk, "score": round(score, 3)})
-    scored.sort(key=lambda x: x["score"], reverse=True)
-    return scored
+        matched = 0
+
+        for word in query_words:
+            tf = counts.get(word, 0)
+            if not tf:
+                continue
+
+            matched += 1
+            df = doc_frequency[word]
+
+            idf = math.log(
+                1 + (total_docs - df + 0.5) / (df + 0.5)
+            )
+
+            score += idf * (tf * 2.2 / (tf + 1.2))
+
+            if word in title_words:
+                score += 2.0
+
+        if matched:
+            item = dict(chunk)
+            item["score"] = round(score, 3)
+            item["matched_terms"] = matched
+            results.append(item)
+
+    results.sort(
+        key=lambda item: item["score"],
+        reverse=True
+    )
+
+    return results
+
 
 def llm_answer(question: str, sources: list[dict[str, Any]]) -> str | None:
     api_key = os.getenv("OPENAI_API_KEY")
