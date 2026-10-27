@@ -112,7 +112,34 @@ def tokens(text: str) -> list[str]:
     }
 
     return [aliases.get(word, word) for word in words]
+    
+def expand_query_tokens(
+    question: str,
+    chunks: list[dict[str, Any]]
+) -> set[str]:
+    query_words = set(tokens(question))
+    vocabulary = set()
 
+    for chunk in chunks:
+        text = " ".join(
+            str(chunk.get(key, "") or "")
+            for key in ("title", "document", "article", "text")
+        )
+        vocabulary.update(tokens(text))
+
+    # Ищем похожие слова, чтобы учитывать опечатки
+    for word in list(query_words):
+        if len(word) >= 5 and word not in vocabulary:
+            matches = get_close_matches(
+                word,
+                list(vocabulary),
+                n=2,
+                cutoff=0.80
+            )
+            query_words.update(matches)
+
+    return query_words
+    
 def split_law(law: dict[str, Any]) -> list[dict[str, Any]]:
     body = str(law.get("text", "") or "")
     # Split by article/section markers, retaining article headings.
