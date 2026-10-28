@@ -784,7 +784,6 @@ if not answer:
         for item in results
     ]
 
-
     return {
                 "answer": answer or "Текст найденного источника пуст.",
                 "sources": sources,
