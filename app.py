@@ -679,3 +679,116 @@ def search_chunks(
         ranked.append(item)
 
     ranked.sort(key=lambda item: item["score"], reverse=True)
+    
+    if article_request:
+        requested_number = str(article_request["article"])
+        exact_matches = [
+            item for item in ranked
+            if contains_article_number(item, requested_number)
+            and (
+                not article_request.get("code")
+                or item.get("code") == article_request["code"]
+            )
+        ]
+        if exact_matches:
+            return exact_matches[:limit], article_request
+        return [], article_request
+
+    return ranked[:limit], article_request
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "version": APP_VERSION}
+
+
+@app.get("/api/status")
+async def api_status():
+    laws = load_db()
+    return {
+        "status": "ok",
+        "version": APP_VERSION,
+        "laws_count": len(laws),
+    }
+
+
+@app.get("/api/laws")
+async def api_laws():
+    return {"laws": load_db(), "count": len(load_db())}
+
+
+@app.post("/api/ask")
+async def api_ask(payload: AskRequest):
+    question = payload.question.strip()
+    if not question:
+        raise HTTPException(
+            status_code=400,
+            detail="Введите вопрос."
+        )
+
+    laws = load_db()
+    if not laws:
+        raise HTTPException(
+            status_code=503,
+            detail="База законов пуста или не загружена."
+        )
+
+    chunks = all_chunks(laws)
+    results, article_request = search_chunks(question, chunks)
+
+    if not results:
+        if article_request:
+            answer = (
+                f"Не удалось найти статью {article_request['article']}"
+                + (
+                    f" кодекса {article_request['code']}"
+                    if article_request.get("code")
+                    else ""
+                )
+                + " в загруженной базе. Проверьте номер статьи и кодекс."
+            )
+        else:
+            answer = (
+                "Подходящий фрагмент в базе не найден. "
+                "Попробуйте уточнить вопрос."
+            )
+
+        return {
+            "answer": answer,
+            "sources": [],
+            "question": question,
+        }
+
+    best = results[0]
+    answer = str(best.get("text", "")).strip()
+
+    sources = [
+        {
+            "title": str(item.get("heading") or item.get("title") or "Источник"),
+            "document": str(item.get("document") or item.get("title") or ""),
+            "article": item.get("article"),
+            "url": str(item.get("url") or ""),
+            "text": str(item.get("text") or ""),
+        }
+        for item in results
+    ]
+
+    return {
+        "answer": answer or "Текст найденного источника пуст.",
+        "sources": sources,
+        "question": question,
+    }
+
+
+@app.post("/api/reload")
+async def api_reload():
+    return {
+        "status": "ok",
+        "laws_count": len(load_db()),
+        "message": "База перечитана с диска."
+            }
+    
