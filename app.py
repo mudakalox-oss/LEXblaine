@@ -787,6 +787,71 @@ async def api_ask(payload: AskRequest):
     }
 
 
+def gemini_answer(question: str, sources: list[dict]) -> str | None:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key or not sources:
+        return None
+
+    context_parts = []
+    for source in sources[:3]:
+        text = str(source.get("text", ""))[:5000]
+        title = str(source.get("heading") or source.get("title") or "Источник")
+        context_parts.append(f"{title}\n{text}")
+
+    context = "\n\n---\n\n".join(context_parts)
+
+    payload = {
+        "system_instruction": {
+            "parts": [{
+                "text": (
+                    "Ты CODEX, помощник по законодательству GTA5RP Blaine. "
+                    "Отвечай по-русски, кратко и понятно. "
+                    "Используй только предоставленные источники. "
+                    "Не придумывай статьи, наказания и правила. "
+                    "Если источников недостаточно, прямо скажи об этом. "
+                    "Это игровой сервер, не реальная юридическая консультация."
+                )
+            }]
+        },
+        "contents": [{
+            "parts": [{
+                "text": (
+                    f"Вопрос пользователя: {question}\n\n"
+                    f"Фрагменты базы законов:\n{context}"
+                )
+            }]
+        }],
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": 350,
+            "candidateCount": 1
+        }
+    }
+
+    request = urllib.request.Request(
+        "https://generativelanguage.googleapis.com/v1beta/"
+        "models/gemini-3.5-flash-lite:generateContent",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "x-goog-api-key": api_key,
+        },
+        method="POST",
+    )
+
+    try:
+        def send_request():
+            with urllib.request.urlopen(request, timeout=20) as response:
+                return json.loads(response.read().decode("utf-8"))
+
+        result = asyncio.run(asyncio.to_thread(send_request))
+        return (
+            result["candidates"][0]["content"]["parts"][0]["text"].strip()
+        )
+    except Exception as exc:
+        print(f"Gemini API error: {type(exc).__name__}: {exc}")
+        return None
+
 @app.post("/api/reload")
 async def api_reload():
     return {
