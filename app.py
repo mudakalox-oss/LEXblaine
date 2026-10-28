@@ -1,4 +1,4 @@
-from __future__ import annotations
+хfrom __future__ import annotations
 
 import json
 import os
@@ -727,6 +727,7 @@ async def api_laws():
 @app.post("/api/ask")
 async def api_ask(payload: AskRequest):
     question = payload.question.strip()
+
     if not question:
         raise HTTPException(
             status_code=400,
@@ -746,7 +747,8 @@ async def api_ask(payload: AskRequest):
     if not results:
         if article_request:
             answer = (
-                f"Не удалось найти статью {article_request['article']}"
+                f"Не удалось найти статью "
+                f"{article_request['article']}"
                 + (
                     f" кодекса {article_request['code']}"
                     if article_request.get("code")
@@ -767,16 +769,22 @@ async def api_ask(payload: AskRequest):
         }
 
     best = results[0]
+
     answer = await asyncio.to_thread(
-    gemini_answer, question, results
-)
-if not answer:
-    answer = str(best.get("text", "")).strip()
+        gemini_answer, question, results
+    )
+
+    if not answer:
+        answer = str(best.get("text", "")).strip()
 
     sources = [
         {
-            "title": str(item.get("heading") or item.get("title") or "Источник"),
-            "document": str(item.get("document") or item.get("title") or ""),
+            "title": str(
+                item.get("heading") or item.get("title") or "Источник"
+            ),
+            "document": str(
+                item.get("document") or item.get("title") or ""
+            ),
             "article": item.get("article"),
             "url": str(item.get("url") or ""),
             "text": str(item.get("text") or ""),
@@ -785,9 +793,9 @@ if not answer:
     ]
 
     return {
-                "answer": answer or "Текст найденного источника пуст.",
-                "sources": sources,
-                "question": question,
+        "answer": answer or "Текст найденного источника пуст.",
+        "sources": sources,
+        "question": question,
     }
 
 
