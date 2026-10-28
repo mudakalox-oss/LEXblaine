@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import asyncio
+import urllib.request
+import urllib.error
 from pathlib import Path
 from typing import Any
 
