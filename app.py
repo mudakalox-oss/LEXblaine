@@ -767,6 +767,10 @@ async def api_ask(payload: AskRequest):
         }
 
     best = results[0]
+    answer = await asyncio.to_thread(
+    gemini_answer, question, results
+)
+if not answer:
     answer = str(best.get("text", "")).strip()
 
     sources = [
