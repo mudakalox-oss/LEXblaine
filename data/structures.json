@@ -1,0 +1,46 @@
+{
+  "structures": [
+    {
+      "id": "sang",
+      "name": "SANG",
+      "full_name": "Национальная Гвардия штата Сан-Андреас",
+      "docs": ["zakon_oryjie", "zakon_o_ng", "ustav_sang", "yk", "tk", "pk", "dk", "koap", "konstitysiya", "etn_k", "goss_taina", "mitingi"]
+    },
+    {
+      "id": "lspd",
+      "name": "LSPD",
+      "full_name": "Полицейский Департамент города Лос-Сантос",
+      "docs": ["zakon_oryjie", "zakon_o_lspd", "ustav_lspd", "yk", "tk", "pk", "dk", "koap", "konstitysiya", "etn_k", "goss_taina", "mitingi"]
+    },
+    {
+      "id": "fib",
+      "name": "FIB",
+      "full_name": "Федеральное Расследовательское Бюро",
+      "docs": ["zakon_oryjie", "zakon_o_fib", "ustav_fib", "yk", "tk", "pk", "koap", "konstitysiya", "etn_k", "goss_taina", "mitingi"]
+    },
+    {
+      "id": "lssd",
+      "name": "LSSD",
+      "full_name": "Департамент Шерифа округа Блейн",
+      "docs": ["zakon_oryjie", "zakon_o_lssd", "ustav_lssd", "yk", "tk", "pk", "dk", "koap", "konstitysiya", "etn_k", "goss_taina", "mitingi"]
+    },
+    {
+      "id": "usss",
+      "name": "USSS",
+      "full_name": "Секретная Служба США в штате Сан-Андреас",
+      "docs": []
+    },
+    {
+      "id": "advokatura",
+      "name": "Адвокатура",
+      "full_name": "Адвокатура штата Сан-Андреас",
+      "docs": []
+    },
+    {
+      "id": "prokuratura",
+      "name": "Прокуратура",
+      "full_name": "Офис Генерального прокурора штата Сан-Андреас",
+      "docs": []
+    }
+  ]
+}
