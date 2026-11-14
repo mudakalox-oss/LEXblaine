@@ -1,0 +1,101 @@
+[
+  {
+    "structure": "fib",
+    "question": "Дресс-код сотрудника FIB",
+    "expected": [
+      "ustav_fib|Внешний вид"
+    ]
+  },
+  {
+    "structure": "fib",
+    "question": "Какие запреты у сотрудников FIB",
+    "expected": [
+      "ustav_fib|Запреты для сотрудников"
+    ]
+  },
+  {
+    "structure": "fib",
+    "question": "Какие обязанности у сотрудника FIB",
+    "expected": [
+      "ustav_fib|Обязанности сотрудника",
+      "zakon_o_fib|Обязанности"
+    ]
+  },
+  {
+    "structure": "lspd",
+    "question": "Какая иерархия в LSPD",
+    "expected": [
+      "ustav_lspd|Иерархия"
+    ]
+  },
+  {
+    "structure": "lspd",
+    "question": "Правила использования рации в LSPD",
+    "expected": [
+      "ustav_lspd|Служебная рация"
+    ]
+  },
+  {
+    "structure": "lspd",
+    "question": "Какие права у сотрудника LSPD",
+    "expected": [
+      "ustav_lspd|Права сотрудников",
+      "zakon_o_lspd|Права Полицейского"
+    ]
+  },
+  {
+    "structure": "lssd",
+    "question": "Какие дисциплинарные взыскания в LSSD",
+    "expected": [
+      "ustav_lssd|Дисциплинарные взыскания"
+    ]
+  },
+  {
+    "structure": "lssd",
+    "question": "Какие обязанности у сотрудников LSSD",
+    "expected": [
+      "ustav_lssd|Обязанности сотрудников",
+      "zakon_o_lssd|Обязанности"
+    ]
+  },
+  {
+    "structure": "sang",
+    "question": "Правила парковки транспорта SANG",
+    "expected": [
+      "ustav_sang|парковки"
+    ]
+  },
+  {
+    "structure": "sang",
+    "question": "Как уволиться из SANG",
+    "expected": [
+      "ustav_sang|Основные положения (п. 14.1",
+      "ustav_sang|Восстановление"
+    ]
+  },
+  {
+    "structure": "lspd",
+    "question": "Сколько дадут сотруднику LSPD за взятку",
+    "expected": [
+      "yk|Взятк",
+      "yk|взятк"
+    ]
+  },
+  {
+    "structure": "lssd",
+    "question": "Штраф сотруднику LSSD за превышение скорости",
+    "expected": [
+      "dk|Скоростные",
+      "dk|Скоростной лимит",
+      "dk|Статья 32"
+    ]
+  },
+  {
+    "structure": "fib",
+    "question": "Может ли сотрудник FIB получить условно-досрочное освобождение",
+    "expected": [
+      "yk|Условно-досрочное",
+      "yk|УДО"
+    ]
+  }
+]
