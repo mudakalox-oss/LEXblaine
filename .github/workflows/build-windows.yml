@@ -1861,8 +1861,13 @@ jobs:
       - name: Prepare file
         shell: pwsh
         run: Copy-Item windows-app/src-tauri/target/release/bcore.exe Bcore.exe
+      - name: Save file as backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bcore
+          path: Bcore.exe
       - name: Publish release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "app-${{ github.run_number }}" Bcore.exe --title "Bcore для Windows (сборка ${{ github.run_number }})" --notes "Скачайте Bcore.exe и запустите. Установка не нужна. Уже установленные копии обновятся сами."
+        run: gh release create "app-${{ github.run_number }}" Bcore.exe --repo "${{ github.repository }}" --title "Bcore для Windows (сборка ${{ github.run_number }})" --notes "Скачайте Bcore.exe и запустите. Установка не нужна. Уже установленные копии обновятся сами."
