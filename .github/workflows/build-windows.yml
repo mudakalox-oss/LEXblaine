@@ -287,7 +287,8 @@ jobs:
                       let _ = w.show();
                   }
               }
-              if let Some(item) = st.click_item.lock().unwrap().as_ref() {
+              let item = st.click_item.lock().unwrap().clone();
+              if let Some(item) = item {
                   let _ = item.set_checked(on);
               }
           }
